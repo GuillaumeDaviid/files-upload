@@ -12,23 +12,56 @@ const isLikelyYoutubeUrl = (value) =>
 function App() {
   const [url, setUrl] = useState('')
   const [format, setFormat] = useState(FORMATS[0].value)
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState({ type: '', message: '' })
+  const [isLoading, setIsLoading] = useState(false)
 
   const isValid = useMemo(() => {
     if (!url.trim()) return false
     return isLikelyYoutubeUrl(url)
   }, [url])
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     if (!isValid) {
-      setStatus('Le lien doit provenir de YouTube (youtube.com ou youtu.be).')
+      setStatus({
+        type: 'error',
+        message: 'Le lien doit provenir de YouTube (youtube.com ou youtu.be).',
+      })
       return
     }
 
-    setStatus(
-      'Mode demo : aucun backend etant branche, le telechargement est simule.'
-    )
+    setIsLoading(true)
+    setStatus({ type: '', message: '' })
+
+    try {
+      const response = await fetch(
+        `/api/download?url=${encodeURIComponent(url)}&format=${format}`
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || 'Le telechargement a echoue.')
+      }
+
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `youtube.${format}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+
+      setStatus({ type: 'info', message: 'Telechargement lance.' })
+    } catch (error) {
+      setStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Erreur inconnue.',
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -41,8 +74,8 @@ function App() {
           <span> au format MP3 ou MP4.</span>
         </h1>
         <p className="lead">
-          Colle un lien, choisis un format, puis lance le telechargement. Interface
-          front-end prete a etre connectee a un backend plus tard.
+          Colle un lien, choisis un format, puis lance le telechargement. Le backend
+          gere maintenant la conversion.
         </p>
       </header>
 
@@ -62,7 +95,10 @@ function App() {
 
           <label className="field">
             <span className="field__label">Format</span>
-            <select value={format} onChange={(event) => setFormat(event.target.value)}>
+            <select
+              value={format}
+              onChange={(event) => setFormat(event.target.value)}
+            >
               {FORMATS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -71,13 +107,19 @@ function App() {
             </select>
           </label>
 
-          <button type="submit" className="cta" disabled={!url.trim()}>
-            Telecharger en {format.toUpperCase()}
+          <button type="submit" className="cta" disabled={!url.trim() || isLoading}>
+            {isLoading
+              ? 'Telechargement en cours...'
+              : `Telecharger en ${format.toUpperCase()}`}
           </button>
 
-          {status && (
-            <p className={isValid ? 'status status--info' : 'status status--error'}>
-              {status}
+          {status.message && (
+            <p
+              className={
+                status.type === 'error' ? 'status status--error' : 'status status--info'
+              }
+            >
+              {status.message}
             </p>
           )}
         </form>
@@ -92,8 +134,8 @@ function App() {
             <p>Une seule action : coller le lien et lancer.</p>
           </article>
           <article>
-            <h3>Prete pour l'etape suivante</h3>
-            <p>Branche un backend plus tard pour activer le telechargement.</p>
+            <h3>Backend branche</h3>
+            <p>Le telechargement passe par l'API locale.</p>
           </article>
         </section>
       </main>
